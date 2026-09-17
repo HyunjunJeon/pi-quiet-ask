@@ -25,6 +25,7 @@
   "files": [
     "extensions",
     "skills",
+    "schemas",
     "README.md",
     "README.ko.md",
     "CHANGELOG.md",
@@ -35,7 +36,8 @@
     "skills": ["./skills"]
   },
   "scripts": {
-    "check": "tsc --noEmit -p tsconfig.json"
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test --experimental-strip-types tests/*.ts"
   },
   "dependencies": {
     "@typesafe-ai/sdk": "0.6.0"

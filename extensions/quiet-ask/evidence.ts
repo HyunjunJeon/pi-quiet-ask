@@ -28,11 +28,14 @@
  * `verifications`, and `verified_after_change` as plain facts.
  */
 
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { evidenceDir, type QuietAskConfig } from "./config.ts";
 import type { DecisionOutcome, DecisionRecord, HistoryStore } from "./history.ts";
+
+/** Published schema so a ledger file is validatable (and editable) on its own. */
+export const EVIDENCE_SCHEMA_URL = "https://raw.githubusercontent.com/HyunjunJeon/pi-quiet-ask/main/schemas/evidence.schema.json";
 
 export type CommandKind = "test" | "typecheck" | "lint" | "build" | "run" | "other";
 
@@ -110,6 +113,7 @@ export interface PromptEvidence {
 }
 
 export interface EvidenceFile {
+	$schema?: string;
 	version: 1;
 	session_id: string;
 	cwd: string;
@@ -161,6 +165,28 @@ function push<T>(list: T[], item: T): void {
 }
 
 /** Derive the headline status from the facts. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isPromptEvidence(value: unknown): value is PromptEvidence {
+	if (!isRecord(value)) return false;
+	return (
+		typeof value.index === "number" &&
+		typeof value.started_at === "string" &&
+		typeof value.request === "string" &&
+		Array.isArray(value.files_changed) &&
+		Array.isArray(value.commands) &&
+		Array.isArray(value.verifications) &&
+		Array.isArray(value.phases) &&
+		Array.isArray(value.invariants) &&
+		Array.isArray(value.runs) &&
+		Array.isArray(value.decisions) &&
+		typeof value.status === "string"
+	);
+}
+
+/** Derive the headline status from the facts. */
 export function deriveStatus(p: PromptEvidence): WorkStatus {
 	if (p.decisions.at(-1)?.action === "block") return "blocked";
 	if (p.files_changed.length === 0) return "no_changes";
@@ -182,7 +208,14 @@ export class EvidenceStore {
 		this.pi = pi;
 		this.config = config;
 		this.scrub = scrub;
-		this.file = { version: 1, session_id: "", cwd: "", updated_at: new Date().toISOString(), prompts: [] };
+		this.file = {
+			$schema: EVIDENCE_SCHEMA_URL,
+			version: 1,
+			session_id: "",
+			cwd: "",
+			updated_at: new Date().toISOString(),
+			prompts: [],
+		};
 	}
 
 	filePath(): string | undefined {
@@ -217,13 +250,30 @@ export class EvidenceStore {
 		return p;
 	}
 
-	/** Point the ledger at this session's file; a new session id starts a fresh ledger. */
+	/** Point the ledger at this session's file; resume reloads the existing JSON. */
 	bind(ctx: ExtensionContext): void {
 		const id = ctx.sessionManager.getSessionId();
-		if (id !== this.file.session_id) this.file.prompts.length = 0;
+		this.path = join(evidenceDir(this.config), `${id || "session"}.json`);
+		if (id !== this.file.session_id) {
+			this.file.prompts.length = 0;
+			this.load();
+		}
+		this.file.$schema = EVIDENCE_SCHEMA_URL;
 		this.file.session_id = id;
 		this.file.cwd = ctx.cwd;
-		this.path = join(evidenceDir(this.config), `${id || "session"}.json`);
+	}
+
+	/** Reload a previously written ledger. Corrupt or foreign files are ignored. */
+	private load(): void {
+		if (!this.path || !existsSync(this.path)) return;
+		try {
+			const raw = JSON.parse(readFileSync(this.path, "utf8")) as Partial<EvidenceFile>;
+			if (raw.version !== 1 || !Array.isArray(raw.prompts)) return;
+			this.file.prompts = raw.prompts.filter(isPromptEvidence);
+			if (this.file.prompts.length > MAX_PROMPTS) this.file.prompts.splice(0, this.file.prompts.length - MAX_PROMPTS);
+		} catch {
+			// A broken ledger must not block the session; we start empty and overwrite.
+		}
 	}
 
 	register(history: HistoryStore, ctx: ExtensionContext): void {

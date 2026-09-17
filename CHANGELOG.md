@@ -30,12 +30,23 @@ extension entry changed; nothing from 0.1.0 is kept as-is.
 - Decision history: `pi-quiet-ask:decision` session entries plus
   `~/.pi/agent/pi-quiet-ask/history.jsonl`, with resolved outcomes;
   `/quiet history [kind]`.
+- **Evidence ledger:** `~/.pi/agent/pi-quiet-ask/evidence/<sessionId>.json`
+  records the work state per prompt (files changed, classified commands,
+  verification freshness, graph phases, run claims, non-trivial decisions,
+  derived `status`). Schema at `schemas/evidence.schema.json`. Reloaded
+  on session resume. `/quiet evidence`. Packs read it via
+  `state: ["evidence"]`; `honest_finish` requires
+  `not verified_after_change`.
 - Layered config (`~/.pi/agent/pi-quiet-ask.json`, `<project>/.pi/pi-quiet-ask.json`),
   key resolution from env / config / key file / `.env`, secret redaction
   with counts, truncation, cache with in-flight sharing, rate-limited
   error reporting.
 - `/quiet` command: status, on|off, packs, pack, mode, triage, graph,
   last, check, history.
+- Skill `quiet-ask`: tells the pi agent to leave observable traces, ask
+  only closed questions, and send relevant state (not more state) so
+  Jev's loops have something to judge. The vendored `typesafe-ai` skill
+  (how to build TypeSafe apps) is not this package's job and was removed.
 
 ### Removed
 

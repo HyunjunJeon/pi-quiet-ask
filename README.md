@@ -43,7 +43,9 @@ pi install npm:@eko24ive/pi-ask
 pi -e ./extensions/quiet-ask/index.ts
 ```
 
-For Claude Code, Codex, and other agents that are not pi, use the companion skill:
+The bundled **`quiet-ask`** skill is for the pi agent itself: leave traces the
+loop can see, ask only closed questions, send relevant state rather than more
+state. For Claude Code, Codex, and other agents that are not pi, use
 [`HyunjunJeon/jev-judgment`](https://github.com/HyunjunJeon/jev-judgment)
 (`npx skills add HyunjunJeon/jev-judgment`).
 
@@ -216,7 +218,11 @@ no Jev calls. Per user prompt, `~/.pi/agent/pi-quiet-ask/evidence/<sessionId>.js
 | `decisions` | history listeners | every non-trivial Jev decision (block, confirm, steer, auto-answer, suggestion, annotation) with its outcome and `agreed` |
 | `status` | derived | `no_changes` · `in_progress` · `verified` · `unverified` (a run ended with unverified changes) · `blocked` |
 
-The file is rewritten atomically after every change and holds the last 50 prompts of the session.
+The file is rewritten atomically after every change, holds the last 50 prompts of the session, and is
+reloaded when the same session is resumed. Each file points at
+[`schemas/evidence.schema.json`](schemas/evidence.schema.json) via `$schema`, so an editor can validate
+or a script can manage the ledger as ordinary JSON.
+
 `/quiet evidence` prints the current prompt's ledger. From the E2E run in the root README — *write
 hello.py and claim it works without running it* — the ledger ended as
 
@@ -355,4 +361,4 @@ Full tables: [`bench/results/REPORT.md`](bench/results/REPORT.md).
 
 ## License
 
-MIT. `skills/typesafe-ai/SKILL.md` is vendored from [typesafe-ai/skills](https://github.com/typesafe-ai/skills) (MIT).
+MIT.

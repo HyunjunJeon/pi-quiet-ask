@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/HyunjunJeon/pi-quiet-ask/main/schemas/evidence.schema.json",
+  "title": "pi-quiet-ask evidence ledger",
+  "description": "What actually happened during each user prompt in a pi session. history.jsonl answers what Jev said; this file answers what the work state is. Written atomically to ~/.pi/agent/pi-quiet-ask/evidence/<sessionId>.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "session_id", "cwd", "updated_at", "prompts"],
+  "properties": {
+    "$schema": { "type": "string", "format": "uri" },
+    "version": { "const": 1 },
+    "session_id": { "type": "string" },
+    "cwd": { "type": "string" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "prompts": {
+      "type": "array",
+      "maxItems": 50,
+      "items": { "$ref": "#/$defs/prompt" }
+    }
+  },
+  "$defs": {
+    "prompt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "started_at", "request", "files_changed", "commands", "verifications", "phases", "invariants", "runs", "decisions", "status"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 1 },
+        "started_at": { "type": "string", "format": "date-time" },
+        "request": { "type": "string" },
+        "intent": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["label", "confidence"],
+          "properties": {
+            "label": { "type": "string" },
+            "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "files_changed": { "type": "array", "items": { "$ref": "#/$defs/fileChange" } },
+        "commands": { "type": "array", "items": { "$ref": "#/$defs/command" } },
+        "verifications": { "type": "array", "items": { "$ref": "#/$defs/verification" } },
+        "phases": { "type": "array", "items": { "$ref": "#/$defs/phase" } },
+        "invariants": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "turn"],
+            "properties": {
+              "name": { "type": "string" },
+              "turn": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "runs": { "type": "array", "items": { "$ref": "#/$defs/run" } },
+        "decisions": { "type": "array", "items": { "$ref": "#/$defs/decision" } },
+        "status": {
+          "type": "string",
+          "enum": ["no_changes", "in_progress", "verified", "unverified", "blocked"]
+        }
+      }
+    },
+    "fileChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "run", "turn", "tool", "path", "is_error"],
+      "properties": {
+        "at": { "type": "string", "format": "date-time" },
+        "run": { "type": "integer", "minimum": 1 },
+        "turn": { "type": "integer", "minimum": 0 },
+        "tool": { "type": "string", "enum": ["write", "edit"] },
+        "path": { "type": "string" },
+        "is_error": { "type": "boolean" }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "run", "turn", "command", "kind", "is_error", "output_head"],
+      "properties": {
+        "at": { "type": "string", "format": "date-time" },
+        "run": { "type": "integer", "minimum": 1 },
+        "turn": { "type": "integer", "minimum": 0 },
+        "command": { "type": "string" },
+        "kind": { "$ref": "#/$defs/commandKind" },
+        "is_error": { "type": "boolean" },
+        "output_head": { "type": "string" }
+      }
+    },
+    "verification": {
+      "allOf": [
+        { "$ref": "#/$defs/command" },
+        {
+          "type": "object",
+          "required": ["after_last_change", "passed"],
+          "properties": {
+            "after_last_change": { "type": "boolean" },
+            "passed": { "type": "boolean" }
+          }
+        }
+      ]
+    },
+    "phase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["turn", "phase", "confidence", "progress", "drift", "tools"],
+      "properties": {
+        "run": { "type": "integer", "minimum": 1 },
+        "turn": { "type": "integer", "minimum": 0 },
+        "phase": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "progress": { "type": "number", "minimum": 0, "maximum": 1 },
+        "drift": { "type": "number", "minimum": 0, "maximum": 1 },
+        "tools": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ended_at", "final_text", "tool_count"],
+      "properties": {
+        "ended_at": { "type": "string", "format": "date-time" },
+        "final_text": { "type": "string" },
+        "tool_count": { "type": "integer", "minimum": 0 },
+        "claims_done": { "type": "number", "minimum": 0, "maximum": 1 },
+        "verified": { "type": "number", "minimum": 0, "maximum": 1 },
+        "hedged": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "kind", "action", "summary"],
+      "properties": {
+        "at": { "type": "string", "format": "date-time" },
+        "kind": { "type": "string" },
+        "action": { "type": "string" },
+        "summary": { "type": "string" },
+        "toolCallId": { "type": "string" },
+        "outcome": { "type": "string" },
+        "agreed": { "type": "boolean" }
+      }
+    },
+    "commandKind": {
+      "type": "string",
+      "enum": ["test", "typecheck", "lint", "build", "run", "other"]
+    }
+  }
+}

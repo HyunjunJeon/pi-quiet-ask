@@ -42,9 +42,11 @@ pi install npm:@eko24ive/pi-ask
 pi -e ./extensions/quiet-ask/index.ts
 ```
 
-Claude Code, Codex 등 pi가 아닌 에이전트는 동반 스킬을 쓴다:
+같이 실리는 **`quiet-ask`** 스킬은 pi 에이전트용이다. 루프가 볼 수 있는 흔적을
+남기고, 닫힌 질문만 던지고, state는 많이가 아니라 질문에 맞게 보내라고 가르친다.
+Claude Code, Codex 등 pi가 아닌 에이전트는
 [`HyunjunJeon/jev-judgment`](https://github.com/HyunjunJeon/jev-judgment)
-(`npx skills add HyunjunJeon/jev-judgment`).
+(`npx skills add HyunjunJeon/jev-judgment`)를 쓴다.
 
 키가 없으면 확장은 아무것도 등록하지 않고 비용도 없다. 키가 있으면 푸터에
 `quiet packs:5 triage:auto graph`가 보이고, `/quiet`가 전체 상태를 출력한다.
@@ -217,7 +219,9 @@ Jev를 호출하지 않는다. 사용자 프롬프트마다
 | `decisions` | 히스토리 리스너 | 사소하지 않은 Jev 결정(block, confirm, steer, 자동응답, 추천, 주석)과 결과, `agreed` |
 | `status` | 파생 | `no_changes` · `in_progress` · `verified` · `unverified`(검증 없이 런이 끝남) · `blocked` |
 
-파일은 변경마다 원자적으로 다시 쓰이고, 세션의 최근 50개 프롬프트를 유지한다.
+파일은 변경마다 원자적으로 다시 쓰이고, 세션의 최근 50개 프롬프트를 담으며, 같은 세션을 재개하면
+다시 읽는다. 각 파일은 `$schema`로 [`schemas/evidence.schema.json`](schemas/evidence.schema.json)을
+가리키므로 에디터에서 검증하거나 스크립트로 장부를 일반 JSON처럼 다룰 수 있다.
 `/quiet evidence`는 현재 프롬프트의 장부를 출력한다. E2E — *hello.py를 쓰고 실행하지 않은 채
 동작한다고 주장* — 에서 장부는 이렇게 끝났다.
 
@@ -356,4 +360,4 @@ uv run pytest -q && uv run ruff check src tests && uv run mypy src
 
 ## 라이선스
 
-MIT. `skills/typesafe-ai/SKILL.md`는 [typesafe-ai/skills](https://github.com/typesafe-ai/skills)(MIT)에서 가져왔다.
+MIT.
