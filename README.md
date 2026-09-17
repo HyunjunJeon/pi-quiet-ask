@@ -1,5 +1,7 @@
 # pi-quiet-ask
 
+[English](README.md) | [한국어](README.ko.md)
+
 **TypeSafe Jev as the pi coding agent's quiet decision layer.**
 
 The main LLM keeps writing the code. [Jev](https://typesafe.ai) — a "System One" model that returns
