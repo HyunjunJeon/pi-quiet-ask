@@ -1,0 +1,17 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# node
+node_modules/
+dist/
+*.tgz
+
+# python leftovers if any
+.venv/
+__pycache__/
+*.pyc
+
+# editor
+.DS_Store
