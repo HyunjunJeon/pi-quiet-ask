@@ -50,7 +50,7 @@ Claude Code, Codex 등 pi가 아닌 에이전트는
 키가 없으면 확장은 아무것도 등록하지 않고 비용도 없다. 키가 있으면 푸터에
 `quiet packs:5 triage:auto graph`가 보이고, `/quiet`가 전체 상태를 출력한다.
 
-![설치 후 idle 푸터와 빈 그래프 HUD](docs/screenshots/14-graph-hud-idle.png)
+![설치 후 idle 푸터와 빈 그래프 HUD](docs/screenshots/01-graph-idle.png)
 
 ## 팩
 
@@ -187,7 +187,7 @@ E2E에서 쓴, 히스토리 재작성을 막는 프로젝트 팩
 [y0usaf/pi-jev](https://github.com/y0usaf/pi-jev) 보정을 따른다. 요청된 일반 수정은
 `destructive`가 ~0.85까지 나온다. 기본은 shadow. 실제로 물으려면 `/quiet pack gate enforce`.
 
-![gate shadow: find -delete 는 실행되고 would confirm 만 남음](docs/screenshots/03-gate-find-delete.png)
+![gate shadow: find -delete 는 실행되고 would confirm 만 남음](docs/screenshots/02-gate-find-delete.png)
 
 #### `output`
 
@@ -216,7 +216,7 @@ refactor, explore, chore, other)와 `ambiguous` (noul). 클래스 태그·푸터
 Jev의 읽기와 장부의 사실이 맞아야 하고, 그때 조향한다: *"완료라고 보고했지만 마지막 변경 이후
 검증이 없습니다 … 지금 해당 검사를 실행하세요"*. 프롬프트당 한 번.
 
-![검증 없이 끝난 턴: honest_finish shadow 경고와 implement HUD](docs/screenshots/15-graph-hud-after-turn.png)
+![검증 없이 끝난 턴: honest_finish shadow 경고와 implement HUD](docs/screenshots/03-graph-after-turn.png)
 
 #### `stuck`
 
@@ -247,12 +247,27 @@ clarify → explore → plan → implement → verify → report
 | `explore_loop` | `exploreLoop`(4)턴 연속 explore이고 progress < `stalled`(0.4) | 계획을 정하거나 막는 질문 하나를 물어라 |
 | `drift` | `drift >= 0.8`이 두 턴 연속 | 요청으로 돌아가라 |
 
-```
-┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ╔═════════╗  ┌─────────┐
-│ clarify │──│ explore │──│  plan   │──│implement│──║ verify  ║──│ report  │
-└─────────┘  └────●────┘  └─────────┘  └────●────┘  ╚════●════╝  └─────────┘
-path explore→implement→verify  progress ▇▇▅  drift 0.07
-```
+HUD는 입력창 위에 있다. 지금 칸은 붉은색, 밟은 칸은 점이 남는다. 상자 아래 장부가
+`prev` / `now` / `session`을 찍는다. 직전 칸, 지금 칸, 그 스텝이 `verified`인지
+`skip`/`drift`인지를 보여 준다. `/quiet evidence`가 같은 `moves` 기록을 덤프한다.
+
+시작 — 여섯 칸이 비어 있고 첫 턴을 기다린다.
+
+![세션 시작 Graph HUD](docs/screenshots/01-graph-idle.png)
+
+첫 프롬프트가 `evidence_demo.py`를 쓰고 끝났다고 했다. 그래프가 `report_without_verify`로
+조향했고 `python3 evidence_demo.py`가 돈 뒤 HUD는 **verify**에서 `now verified`가 됐다.
+
+![검증을 건너뛴 뒤 조향하고 now verified로 기록](docs/screenshots/04-graph-now-verified.png)
+
+두 번째 프롬프트는 리셋이 아니라 다음 장이다. `prev`는 첫 파일, `now`는 `second_demo.py`.
+지금 칸은 붉은 `report`다.
+
+![두 번째 프롬프트 이후 prev와 now](docs/screenshots/05-graph-prev-and-now.png)
+
+`/quiet evidence` — `implement→report skip`, `report→verify ok` 등 세션 `moves`와 `fit`.
+
+![/quiet evidence의 from→to moves와 fit](docs/screenshots/06-quiet-evidence-moves.png)
 
 `/quiet graph`는 경로, 턴별 표, 전이 횟수를 출력한다. 기본은 enforce: 검증을 건너뛰거나
 탐색이 루프되거나 이탈이 두 턴 연속이면 불변식당 프롬프트당 한 번 조향한다.
@@ -317,9 +332,9 @@ Jev를 호출하지 않는다. 사용자 프롬프트마다
 | 옵션 p ≥ 0.5 | `recommended`로 표시하고 제목 앞에 `Jev suggests: pnpm 0.75`. 사용자가 답한다 |
 | `ask_user` 또는 그 이하 | 손대지 않음 |
 
-![선별 suggest: 폼이 열리고 pnpm 이 recommended](docs/screenshots/08-triage-auto-answer.png)
+![선별 suggest: 폼이 열리고 pnpm 이 recommended](docs/screenshots/07-triage-suggest.png)
 
-![선별 auto: 폼을 보여 주지 않고 대화에서 제출](docs/screenshots/12-triage-auto-submit.png)
+![선별 auto: 폼을 보여 주지 않고 대화에서 제출](docs/screenshots/08-triage-auto.png)
 
 다중 선택과 자유 텍스트는 자동응답하지 않는다. pi-ask가 끝나면 레코드를 갱신하므로
 `/quiet history triage`에서 Jev의 선택과 최종 답, 둘이 **일치했는지**를 본다. 임계값이

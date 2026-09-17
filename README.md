@@ -51,7 +51,7 @@ state. For Claude Code, Codex, and other agents that are not pi, use
 Without a key the extension registers nothing and costs nothing. With a key, the footer shows
 `quiet packs:5 triage:auto graph`; `/quiet` prints the full status.
 
-![Idle footer and empty graph HUD after install](docs/screenshots/14-graph-hud-idle.png)
+![Idle footer and empty graph HUD after install](docs/screenshots/01-graph-idle.png)
 
 ## Packs
 
@@ -188,7 +188,7 @@ A pack that fails validation is skipped and named in `/quiet` (`pack errors: …
 [y0usaf/pi-jev](https://github.com/y0usaf/pi-jev)'s calibration: an ordinary requested edit scores up to
 ~0.85 on `destructive`. Default shadow; `/quiet pack gate enforce` to actually ask.
 
-![gate in shadow: find -delete ran, would confirm only](docs/screenshots/03-gate-find-delete.png)
+![gate in shadow: find -delete ran, would confirm only](docs/screenshots/02-gate-find-delete.png)
 
 #### `output`
 
@@ -216,7 +216,7 @@ the run's tool trail. Fires only when `run_edits > 0 and claims_done >= 0.7 and 
 — Jev's reading and the ledger's hard fact have to agree — and then steers: *"you reported the work as
 done, but this run shows no verification after the last change … run the relevant check now"*. Once per prompt.
 
-![Unverified finish: honest_finish shadow warning and implement HUD](docs/screenshots/15-graph-hud-after-turn.png)
+![Unverified finish: honest_finish shadow warning and implement HUD](docs/screenshots/03-graph-after-turn.png)
 
 #### `stuck`
 
@@ -247,12 +247,28 @@ last file or check), not a bare Jev label. Three invariants run in plain code:
 | `explore_loop` | `exploreLoop` (4) consecutive explore turns with progress < `stalled` (0.4) | commit to a plan or ask the one blocking question |
 | `drift` | `drift >= 0.8` two turns in a row | return to the request |
 
-```
-┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ╔═════════╗  ┌─────────┐
-│ clarify │──│ explore │──│  plan   │──│implement│──║ verify  ║──│ report  │
-└─────────┘  └────●────┘  └─────────┘  └────●────┘  ╚════●════╝  └─────────┘
-path explore→implement→verify  progress ▇▇▅  drift 0.07
-```
+The HUD sits above the editor. Current cell is red; visited cells keep a mark. Under the boxes the
+ledger prints `prev` / `now` / `session` — which cell we left, which cell we are in, and whether
+that step was `verified`, `skip`, or `drift`. `/quiet evidence` dumps the same `moves` trail.
+
+Idle — six empty cells, waiting for the first turn:
+
+![Graph HUD at session start](docs/screenshots/01-graph-idle.png)
+
+First prompt wrote `evidence_demo.py` and claimed done. Graph steered `report_without_verify`,
+`python3 evidence_demo.py` ran, HUD became `now verified` on **verify**:
+
+![Graph steers a skipped verify, then records now verified](docs/screenshots/04-graph-now-verified.png)
+
+Second prompt is the next chapter, not a reset. `prev` still shows the first file; `now` shows
+`second_demo.py`. `report` is the red current cell:
+
+![prev and now ledger lines after a second prompt](docs/screenshots/05-graph-prev-and-now.png)
+
+`/quiet evidence` — `implement→report skip`, `report→verify ok`, and the rest of the session
+`moves` with `fit`:
+
+![/quiet evidence showing from→to moves and fit](docs/screenshots/06-quiet-evidence-moves.png)
 
 `/quiet graph` prints the path, the per-turn table, and transition counts. Default is enforce: a
 skipped verify, an explore loop, or two drifting turns steers once per invariant per prompt.
@@ -319,9 +335,9 @@ all?". Then:
 | option p ≥ 0.5 | marks it `recommended` and prefixes the title with `Jev suggests: pnpm 0.75`; the user answers |
 | `ask_user` or lower | untouched |
 
-![Triage suggest: form open, pnpm marked recommended](docs/screenshots/08-triage-auto-answer.png)
+![Triage suggest: form open, pnpm marked recommended](docs/screenshots/07-triage-suggest.png)
 
-![Triage auto: submitted from the conversation, form not shown](docs/screenshots/12-triage-auto-submit.png)
+![Triage auto: submitted from the conversation, form not shown](docs/screenshots/08-triage-auto.png)
 
 Multi-select and free-text questions are never auto-answered. The record is resolved when pi-ask
 completes, so `/quiet history triage` shows Jev's pick next to the final answer and whether they
