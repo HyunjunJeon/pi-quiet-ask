@@ -336,6 +336,21 @@ pi --no-extensions -e ./extensions/quiet-ask/index.ts
 
 Runtime dependency: `@typesafe-ai/sdk`. `@earendil-works/*` and `typebox` are provided by pi.
 
+## Benchmark
+
+`bench/` compares Jev to four chat LLMs on the same closed questions this
+extension asks (`tool_gate`, `agent_question`). Data, labels, and the last
+run are committed. Reproduce from [`bench/README.md`](bench/README.md):
+
+```bash
+cd bench && uv sync --all-groups
+uv run jev-bench                                  # both tasks, Jev + 4 LLMs, 3 repeats
+uv run jev-bench --task agent_question --no-llm   # Jev only
+uv run pytest -q && uv run ruff check src tests && uv run mypy src
+```
+
+Full tables: [`bench/results/REPORT.md`](bench/results/REPORT.md).
+
 ## License
 
 MIT. `skills/typesafe-ai/SKILL.md` is vendored from [typesafe-ai/skills](https://github.com/typesafe-ai/skills) (MIT).

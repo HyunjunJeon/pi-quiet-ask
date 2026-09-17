@@ -8,10 +8,14 @@ node_modules/
 dist/
 *.tgz
 
-# python leftovers if any
+# python (bench/)
 .venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+bench/results/run.log
 
 # editor
 .DS_Store

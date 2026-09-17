@@ -1,0 +1,44 @@
+[project]
+name = "jev-bench"
+version = "0.1.0"
+description = "Benchmark TypeSafe Jev against chat LLMs on coding-agent judgments"
+authors = [{ name = "HyunjunJeon", email = "jeonhj920@gmail.com" }]
+requires-python = ">=3.13"
+dependencies = [
+    # TypeSafe System One client. v1 API (state/questions/answers).
+    "typesafe-sdk>=0.6.0,<0.7",
+    # OpenRouter is OpenAI-compatible; plain HTTP keeps the comparison honest.
+    "httpx>=0.28,<1",
+    "pydantic>=2.11,<3",
+    "python-dotenv>=1.1,<2",
+    "rich>=14,<15",
+]
+
+[project.scripts]
+jev-bench = "jev_bench.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.12",
+    "mypy>=1.16",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.15,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 79
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ANN", "D"]
+ignore = ["D203", "D213"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.mypy]
+strict = true
+python_version = "3.13"
