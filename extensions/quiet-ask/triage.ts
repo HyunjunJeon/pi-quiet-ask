@@ -127,7 +127,8 @@ function criteriaFor(question: AskQuestion): ChoiceCriteria {
 		criteria[option.value] = parts.length > 0 ? parts.join(": ") : null;
 	}
 	const sentinel = ASK_USER in criteria ? SENTINEL : ASK_USER;
-	criteria[sentinel] = "the context does not determine the answer; the user must be asked";
+	criteria[sentinel] =
+		"the answer is not already in `user_request`, `last_user_message`, or `recent`; the user must be asked";
 	return criteria;
 }
 
@@ -160,7 +161,9 @@ export async function judgeAsk(
 	const conversation = buildConversationState(ctx);
 	const { state } = prepareState(
 		{
-			context: conversation,
+			user_request: conversation.user_request,
+			last_user_message: conversation.last_user_message,
+			recent: conversation.recent,
 			cwd: ctx.cwd,
 			title: input.title,
 			questions: Object.fromEntries(
@@ -169,7 +172,11 @@ export async function judgeAsk(
 					{
 						prompt: q.prompt,
 						type: q.type ?? "single",
-						options: q.options.map((o) => ({ value: o.value, label: o.label, description: o.description })),
+						options: q.options.map((o) => ({
+							value: o.value,
+							label: o.label,
+							description: o.description,
+						})),
 					},
 				]),
 			),

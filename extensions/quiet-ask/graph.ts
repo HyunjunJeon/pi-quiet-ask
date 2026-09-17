@@ -17,9 +17,12 @@
  *   explore_loop            N consecutive explore turns without progress
  *   drift                   drift high for two turns in a row
  *
- * Read-only by default (shadow): the HUD and the history show what the
- * graph saw, nothing changes the agent. In enforce mode each invariant
- * steers once per prompt. Everything fails open.
+ * Default is enforce: skipping verify after implement, looping in
+ * explore, or drifting two turns in a row steers the agent once per
+ * prompt. The path is session-scoped; a new user prompt is the next
+ * chapter, not a reset. The HUD prints ledger facts for the previous
+ * and current prompt under the boxes. Shadow keeps the HUD and history
+ * without changing the run. Everything fails open.
  */
 
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, TurnEndEvent } from "@earendil-works/pi-coding-agent";
@@ -28,7 +31,7 @@ import type { JevClient } from "./client.ts";
 import type { QuietAskConfig } from "./config.ts";
 import { buildConversationState } from "./context.ts";
 import { lastAssistantText, type ToolBrief, toolBriefs } from "./engine/state.ts";
-import type { EvidenceStore } from "./evidence.ts";
+import type { EvidenceStore, HudStory } from "./evidence.ts";
 import type { HistoryStore } from "./history.ts";
 import { prepareState } from "./redact.ts";
 import type { RuntimeSettings } from "./settings.ts";
@@ -100,7 +103,108 @@ function bar(value: number): string {
 	return levels[Math.min(levels.length - 1, Math.max(0, Math.round(value * (levels.length - 1))))];
 }
 
-/** One line: `clarify · explore●●● · plan · implement●● · verify · report` */
+const HUD_PHASES = PHASES.filter((p) => p !== "other");
+/** Inner width fits the longest phase name (`implement`). */
+const HUD_INNER = 9;
+
+function padCenter(text: string, width: number): string {
+	const extra = Math.max(0, width - text.length);
+	const left = Math.floor(extra / 2);
+	return `${" ".repeat(left)}${text}${" ".repeat(extra - left)}`.slice(0, width);
+}
+
+function visitMark(count: number, fill: "─" | "═"): string {
+	if (count <= 0) return fill.repeat(HUD_INNER);
+	const token = count === 1 ? "●" : count <= 9 ? `●${count}` : "●+";
+	return padCenter(token, HUD_INNER).replaceAll(" ", fill);
+}
+
+function nodeGlyphs(phase: Phase, current: boolean, visits: number): [string, string, string] {
+	const label = padCenter(phase, HUD_INNER);
+	if (current) {
+		return [`╔${"═".repeat(HUD_INNER)}╗`, `║${label}║`, `╚${visitMark(visits, "═")}╝`];
+	}
+	return [`┌${"─".repeat(HUD_INNER)}┐`, `│${label}│`, `└${visitMark(visits, "─")}┘`];
+}
+
+/** How a HUD node relates to the run so far. */
+export type HudRole = "current" | "passed" | "ahead";
+
+export function hudRole(phase: Phase, current: Phase | undefined, visits: number): HudRole {
+	if (current === phase) return "current";
+	if (visits > 0) return "passed";
+	return "ahead";
+}
+
+/** Theme subset used to paint the TUI HUD. Tests pass a fake. */
+export interface HudTheme {
+	fg(color: "error" | "warning" | "muted" | "dim", text: string): string;
+	bold(text: string): string;
+	strikethrough(text: string): string;
+}
+
+export interface HudPaint {
+	node(text: string, role: HudRole): string;
+	connector(text: string): string;
+	meta(text: string, warning: boolean): string;
+}
+
+/** Current = red, already visited = struck through, not yet = dim. */
+export function hudPaint(theme: HudTheme): HudPaint {
+	return {
+		node(text, role) {
+			if (role === "current") return theme.bold(theme.fg("error", text));
+			if (role === "passed") return theme.strikethrough(theme.fg("muted", text));
+			return theme.fg("dim", text);
+		},
+		connector(text) {
+			return theme.fg("dim", text);
+		},
+		meta(text, warning) {
+			return warning ? theme.fg("warning", text) : theme.fg("muted", text);
+		},
+	};
+}
+
+/**
+ * Three-line box diagram so the path is visible in the TUI, not a
+ * sentence mixed into the footer. Current phase is the double box;
+ * with a theme, current is red, passed is struck through, ahead is dim.
+ *
+ * ```
+ * ┌─────────┐  ┌─────────┐  ┌─────────┐  ╔═════════╗  ┌─────────┐  ┌─────────┐
+ * │ clarify │──│ explore │──│  plan   │──║implement║──│ verify  │──│ report  │
+ * └─────────┘  └────●────┘  └─────────┘  ╚════●════╝  └─────────┘  └─────────┘
+ * ```
+ */
+export function formatHud(graph: GraphState, paint?: HudPaint, story?: HudStory): string[] {
+	const last = graph.turns.at(-1)?.phase;
+	const nodes = HUD_PHASES.map((phase) => {
+		const role = hudRole(phase, last, graph.visits[phase]);
+		const glyphs = nodeGlyphs(phase, role === "current", graph.visits[phase]);
+		return paint ? (glyphs.map((g) => paint.node(g, role)) as [string, string, string]) : glyphs;
+	});
+	const gap = paint ? paint.connector("  ") : "  ";
+	const link = paint ? paint.connector("──") : "──";
+	const join = (row: 0 | 1 | 2, connector: string) => nodes.map((n) => n[row]).join(connector);
+	const lines = [join(0, gap), join(1, link), join(2, gap)];
+	const warn = graph.fired.length > 0 || (story?.now?.includes("unverified") ?? false) || (story?.now?.includes("blocked") ?? false);
+	const add = (text: string) => {
+		lines.push(paint ? paint.meta(text, warn) : text);
+	};
+	if (story?.prev) add(story.prev);
+	if (story?.now) add(story.now);
+	else if (graph.turns.length === 0) add("waiting for first turn");
+	if (story?.session) add(story.session);
+	else if (graph.turns.length > 0) {
+		const flags = graph.fired.length ? `  ⚠ ${graph.fired.map((f) => f.name).join(",")}` : "";
+		const other = last === "other" ? "  phase=other" : "";
+		add(`path ${graph.turns.map((t) => t.phase).join("→")}${flags}${other}`);
+	}
+	return lines;
+}
+
+/** Compact one-liner for status dumps. Prefer `formatHud` in the TUI. */
 export function formatPath(graph: GraphState): string {
 	return PHASES.filter((p) => p !== "other")
 		.map((p) => {
@@ -113,11 +217,9 @@ export function formatPath(graph: GraphState): string {
 }
 
 export function formatGraph(graph: GraphState): string {
-	if (graph.turns.length === 0) return "graph: no turns judged yet";
+	if (graph.turns.length === 0) return [...formatHud(graph)].join("\n");
 	const lines = [
-		`path: ${graph.turns.map((t) => t.phase).join(" → ")}`,
-		formatPath(graph),
-		`progress: ${graph.turns.map((t) => bar(t.progress)).join("")}  drift: ${graph.turns.map((t) => bar(t.drift)).join("")}`,
+		...formatHud(graph),
 		...graph.turns.map(
 			(t) => `  turn ${String(t.turn).padStart(2)}  ${t.phase.padEnd(9)} c=${t.confidence.toFixed(2)} progress=${t.progress.toFixed(2)} drift=${t.drift.toFixed(2)}  ${t.tools.join(",") || "-"}`,
 		),
@@ -140,6 +242,8 @@ export class GraphTracker {
 	private readonly history: HistoryStore;
 	private readonly evidence: EvidenceStore | undefined;
 	private steered = new Set<string>();
+	/** Index in `graph.turns` where the current user prompt started. */
+	private chapterStart = 0;
 
 	constructor(pi: ExtensionAPI, client: JevClient, config: QuietAskConfig, settings: RuntimeSettings, history: HistoryStore, evidence?: EvidenceStore) {
 		this.pi = pi;
@@ -163,11 +267,18 @@ export class GraphTracker {
 	reset(): void {
 		this.graph = emptyGraph();
 		this.steered = new Set();
+		this.chapterStart = 0;
 	}
 
 	register(): void {
-		this.pi.on("input", (event) => {
-			if (event.source !== "extension") this.reset();
+		this.pi.on("input", (event, ctx) => {
+			if (event.source === "extension") return undefined;
+			// New user prompt is the next chapter of the same session, not a
+			// new graph. Keep the path; allow invariants to fire again.
+			this.steered.clear();
+			this.graph.fired = [];
+			this.chapterStart = this.graph.turns.length;
+			if (ctx.hasUI && this.config.graph.hud) this.draw(ctx);
 			return undefined;
 		});
 		this.pi.on("turn_end", async (event, ctx) => {
@@ -175,6 +286,7 @@ export class GraphTracker {
 			await this.judgeTurn(event, ctx);
 		});
 		this.pi.on("session_start", (_e, ctx) => {
+			this.reset();
 			if (ctx.hasUI && this.config.graph.hud) this.draw(ctx);
 		});
 	}
@@ -213,7 +325,7 @@ export class GraphTracker {
 
 		const fired = this.checkInvariants(record);
 		for (const name of fired) this.graph.fired.push({ name, turn: record.turn });
-		this.evidence?.addPhase(record, fired);
+		this.evidence?.addPhase(record, fired, previous?.phase ?? null);
 		const stats = this.settings.packStats("graph");
 		stats.judged += 1;
 		if (fired.length) stats.matched += 1;
@@ -253,11 +365,14 @@ export class GraphTracker {
 		const cfg = this.config.graph;
 		const fired: string[] = [];
 		const already = (name: string) => g.fired.some((f) => f.name === name);
+		const chapter = g.turns.slice(this.chapterStart);
+		const chapterVisits = Object.fromEntries(PHASES.map((p) => [p, 0])) as Record<Phase, number>;
+		for (const t of chapter) chapterVisits[t.phase] += 1;
 
-		if (record.phase === "report" && g.visits.implement > 0 && g.visits.verify === 0 && !already("report_without_verify")) {
+		if (record.phase === "report" && chapterVisits.implement > 0 && chapterVisits.verify === 0 && !already("report_without_verify")) {
 			fired.push("report_without_verify");
 		}
-		const tail = g.turns.slice(-cfg.exploreLoop);
+		const tail = chapter.slice(-cfg.exploreLoop);
 		if (
 			tail.length === cfg.exploreLoop &&
 			tail.every((t) => t.phase === "explore" && t.progress < cfg.stalled) &&
@@ -265,7 +380,7 @@ export class GraphTracker {
 		) {
 			fired.push("explore_loop");
 		}
-		const lastTwo = g.turns.slice(-2);
+		const lastTwo = chapter.slice(-2);
 		if (lastTwo.length === 2 && lastTwo.every((t) => t.drift >= cfg.drift) && !g.fired.some((f) => f.name === "drift" && f.turn >= record.turn - 1)) {
 			fired.push("drift");
 		}
@@ -274,16 +389,13 @@ export class GraphTracker {
 
 	draw(ctx: ExtensionContext): void {
 		if (!ctx.hasUI) return;
-		if (this.graph.turns.length === 0) {
-			ctx.ui.setWidget("quiet-graph", undefined);
-			return;
-		}
-		const last = this.graph.turns.at(-1)!;
-		const flags = this.graph.fired.length ? `  ⚠ ${this.graph.fired.map((f) => f.name).join(",")}` : "";
 		ctx.ui.setWidget(
 			"quiet-graph",
-			[`graph ${formatPath(this.graph)}  progress ${this.graph.turns.map((t) => bar(t.progress)).join("")} drift ${last.drift.toFixed(2)}${flags}`],
-			{ placement: "belowEditor" },
+			(_tui, theme) => ({
+				render: () => formatHud(this.graph, hudPaint(theme), this.evidence?.hudStory()),
+				invalidate: () => {},
+			}),
+			{ placement: "aboveEditor" },
 		);
 	}
 

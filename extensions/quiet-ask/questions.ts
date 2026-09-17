@@ -19,9 +19,22 @@ import { noul } from "@typesafe-ai/sdk";
 /** Sentinel option meaning "the context does not decide this". */
 export const ASK_USER = "ask_user";
 
+/**
+ * The first live triage miss was p=0.89 / d=0.88 on a message that already
+ * said "use pnpm" *and* "call ask_user". A one-line guide treated the
+ * tool-call instruction as doubt. These spell out what counts as a
+ * decision and what to ignore.
+ */
 export const TRIAGE_CHOICE_INSTRUCTIONS =
-	"The coding agent wants to ask the user this question before continuing. Using only the conversation and project facts in `context`, pick the option the context already determines. If the context does not clearly determine one option, pick ask_user.";
+	"Using only `user_request`, `last_user_message`, and `recent`, pick the option those fields already name as the answer to this question (`questions[<id>].prompt`). " +
+	"Pick an option when the user named that option's value or a common alias as the choice (\"use pnpm\", \"I already decided X\", \"only X\"), or when one project fact in `recent` uniquely selects it (lockfile, packageManager, a prior answer). " +
+	"Pick ask_user when the user listed options without choosing, two options still fit, or this is a new preference with no prior statement. " +
+	"The agent calling ask_user, or being told to call it, is not a reason to pick ask_user. " +
+	"Ignore option descriptions that only editorialize (default, recommended, preferred, popular). Do not infer taste.";
 
 export const TRIAGE_DETERMINED = noul(
-	"Does the conversation and project context already determine the answer to this question, so the user does not need to be asked?",
+	"Do `user_request`, `last_user_message`, and `recent` already determine the answer to this question (`questions[<id>].prompt`), so the user does not need to see the form? " +
+		"Already determined: the user named one option (or alias) as the choice, or one project fact uniquely selects one option. " +
+		"Not determined: the user listed options without choosing, contradicted themselves, or this is a new preference with no prior statement. " +
+		"The agent being told to call ask_user is not evidence the user must be asked. Judge only what the state already says.",
 );

@@ -119,6 +119,7 @@ export default function quietAskExtension(pi: ExtensionAPI): void {
 		evidence.register(history, ctx);
 		engine.register();
 		graph.register();
+		if (ctx.hasUI && config.graph.hud) graph.draw(ctx);
 		registerTriage(pi, client, config, settings, history);
 		registerJevAsk(pi, client, config, settings, history);
 

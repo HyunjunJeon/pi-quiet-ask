@@ -12,6 +12,7 @@
  *   verifications     the subset that counts as checking the work, each
  *                     tagged with whether it ran after the last change
  *   phases            the task graph's per-turn phase / progress / drift
+ *   moves             session trail: from→to, tools/files/checks, fit (ok/skip/loop/drift/mismatch)
  *   runs              each agent run's final message head plus, when the
  *                     honest_finish pack judged it, its numbers
  *   decisions         every non-trivial Jev decision (block, confirm, steer,
@@ -68,11 +69,39 @@ export interface Verification extends CommandRun {
 export interface PhaseEntry {
 	run?: number;
 	turn: number;
+	/** Previous cell in this session, or null on the first judged turn. */
+	from?: string | null;
 	phase: string;
 	confidence: number;
 	progress: number;
 	drift: number;
 	tools: string[];
+	files?: string[];
+	checks?: string[];
+	invariants?: string[];
+	fit?: MoveFit;
+	reason?: string;
+}
+
+/** Did this step fit the work, given the previous cell and the facts? */
+export type MoveFit = "ok" | "skip" | "loop" | "drift" | "mismatch";
+
+/** One evaluable step of the session path. Lives on the file so later review does not walk prompts. */
+export interface PhaseMove {
+	at: string;
+	prompt: number;
+	turn: number;
+	from: string | null;
+	to: string;
+	confidence: number;
+	progress: number;
+	drift: number;
+	tools: string[];
+	files: string[];
+	checks: string[];
+	invariants: string[];
+	fit: MoveFit;
+	reason: string;
 }
 
 export interface RunEntry {
@@ -97,6 +126,13 @@ export interface DecisionEntry {
 
 export type WorkStatus = "no_changes" | "in_progress" | "verified" | "unverified" | "blocked";
 
+/** Ledger facts the graph HUD prints under the boxes. */
+export interface HudStory {
+	now?: string;
+	prev?: string;
+	session?: string;
+}
+
 export interface PromptEvidence {
 	index: number;
 	started_at: string;
@@ -119,6 +155,8 @@ export interface EvidenceFile {
 	cwd: string;
 	updated_at: string;
 	prompts: PromptEvidence[];
+	/** Session-wide from→to log, oldest first. Used to evaluate the path later. */
+	moves: PhaseMove[];
 }
 
 const MAX_PROMPTS = 50;
@@ -169,6 +207,79 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function isPhaseMove(value: unknown): value is PhaseMove {
+	if (!isRecord(value)) return false;
+	return (
+		typeof value.at === "string" &&
+		typeof value.prompt === "number" &&
+		typeof value.turn === "number" &&
+		typeof value.to === "string" &&
+		typeof value.fit === "string" &&
+		typeof value.reason === "string" &&
+		Array.isArray(value.tools)
+	);
+}
+
+const PHASE_ORDER: Record<string, number> = {
+	clarify: 0,
+	explore: 1,
+	plan: 2,
+	implement: 3,
+	verify: 4,
+	report: 5,
+};
+
+/**
+ * Decide whether this step fits, from the previous cell and the facts.
+ * No Jev call: later review can replay the same function on the ledger.
+ */
+export function assessMove(input: {
+	from: string | null;
+	to: string;
+	progress: number;
+	drift: number;
+	tools: string[];
+	files: string[];
+	checks: string[];
+	invariants: string[];
+}): { fit: MoveFit; reason: string } {
+	if (input.invariants.includes("report_without_verify") || (input.from === "implement" && input.to === "report" && input.checks.length === 0)) {
+		return { fit: "skip", reason: `${input.from ?? "start"}→${input.to} without a check after the change` };
+	}
+	if (input.invariants.includes("explore_loop") || (input.from === input.to && input.progress < 0.4)) {
+		return { fit: "loop", reason: `stayed on ${input.to} with little progress` };
+	}
+	if (input.invariants.includes("drift") || input.drift >= 0.8) {
+		return { fit: "drift", reason: `turn looks off-request (drift ${input.drift.toFixed(2)})` };
+	}
+	const wrote = input.files.length > 0 || input.tools.some((t) => t === "write" || t === "edit");
+	if (wrote && (input.to === "report" || input.to === "clarify")) {
+		return { fit: "mismatch", reason: `changed files while in ${input.to}` };
+	}
+	if (input.to === "implement" && !wrote && input.tools.length === 0) {
+		return { fit: "mismatch", reason: "implement turn left no file or tool trail" };
+	}
+	const fromN = input.from ? PHASE_ORDER[input.from] : undefined;
+	const toN = PHASE_ORDER[input.to];
+	if (fromN !== undefined && toN !== undefined && toN - fromN > 2 && input.checks.length === 0 && wrote) {
+		return { fit: "skip", reason: `jumped ${input.from}→${input.to}` };
+	}
+	return { fit: "ok", reason: `${input.from ?? "start"}→${input.to}` };
+}
+
+function formatPhaseSpan(p: PromptEvidence): string {
+	const last = p.phases.at(-1);
+	if (!last) return "-";
+	if (last.from) return `${last.from}→${last.phase}`;
+	return p.phases.map((e) => e.phase).join("→") || "-";
+}
+
+function lastFit(p: PromptEvidence): string {
+	const last = p.phases.at(-1);
+	if (!last?.fit || last.fit === "ok") return "";
+	return `  ${last.fit}: ${last.reason ?? ""}`.trimEnd();
+}
+
 function isPromptEvidence(value: unknown): value is PromptEvidence {
 	if (!isRecord(value)) return false;
 	return (
@@ -215,6 +326,7 @@ export class EvidenceStore {
 			cwd: "",
 			updated_at: new Date().toISOString(),
 			prompts: [],
+			moves: [],
 		};
 	}
 
@@ -256,6 +368,7 @@ export class EvidenceStore {
 		this.path = join(evidenceDir(this.config), `${id || "session"}.json`);
 		if (id !== this.file.session_id) {
 			this.file.prompts.length = 0;
+			this.file.moves = [];
 			this.load();
 		}
 		this.file.$schema = EVIDENCE_SCHEMA_URL;
@@ -271,6 +384,7 @@ export class EvidenceStore {
 			if (raw.version !== 1 || !Array.isArray(raw.prompts)) return;
 			this.file.prompts = raw.prompts.filter(isPromptEvidence);
 			if (this.file.prompts.length > MAX_PROMPTS) this.file.prompts.splice(0, this.file.prompts.length - MAX_PROMPTS);
+			this.file.moves = Array.isArray(raw.moves) ? raw.moves.filter(isPhaseMove) : [];
 		} catch {
 			// A broken ledger must not block the session; we start empty and overwrite.
 		}
@@ -345,10 +459,49 @@ export class EvidenceStore {
 	}
 
 	/** Called by the graph tracker after each judged turn. */
-	addPhase(entry: PhaseEntry, fired: string[]): void {
+	addPhase(entry: PhaseEntry, fired: string[], from: string | null = entry.from ?? null): void {
 		const p = this.current();
-		push(p.phases, { ...entry, run: p.runs.length + 1 });
+		const files = p.files_changed.filter((f) => f.turn === entry.turn).map((f) => f.path.split(/[\\/]/).at(-1) ?? f.path);
+		const checks = p.verifications.filter((v) => v.turn === entry.turn).map((v) => v.command);
+		const judged = assessMove({
+			from,
+			to: entry.phase,
+			progress: entry.progress,
+			drift: entry.drift,
+			tools: entry.tools,
+			files,
+			checks,
+			invariants: fired,
+		});
+		const phase: PhaseEntry = {
+			...entry,
+			run: p.runs.length + 1,
+			from,
+			files,
+			checks,
+			invariants: fired,
+			fit: judged.fit,
+			reason: judged.reason,
+		};
+		push(p.phases, phase);
 		for (const name of fired) p.invariants.push({ name, turn: entry.turn });
+		const move: PhaseMove = {
+			at: new Date().toISOString(),
+			prompt: p.index,
+			turn: entry.turn,
+			from,
+			to: entry.phase,
+			confidence: entry.confidence,
+			progress: entry.progress,
+			drift: entry.drift,
+			tools: entry.tools,
+			files,
+			checks,
+			invariants: fired,
+			fit: judged.fit,
+			reason: judged.reason,
+		};
+		push(this.file.moves, move);
 		this.flush();
 	}
 
@@ -395,6 +548,9 @@ export class EvidenceStore {
 				files_changed: p.files_changed.map((f) => f.path).slice(-20),
 				verifications: p.verifications.slice(-5).map((v) => ({ command: v.command, kind: v.kind, passed: v.passed, after_last_change: v.after_last_change })),
 				phases: p.phases.map((e) => e.phase),
+				last_move: p.phases.at(-1)
+					? { from: p.phases.at(-1)!.from ?? null, to: p.phases.at(-1)!.phase, fit: p.phases.at(-1)!.fit, reason: p.phases.at(-1)!.reason }
+					: undefined,
 				invariants: p.invariants.map((i) => i.name),
 				last_run: p.runs.at(-1)?.final_text,
 			},
@@ -415,6 +571,42 @@ export class EvidenceStore {
 		}
 	}
 
+	/** One fact the HUD can show without asking Jev again. */
+	private fact(p: PromptEvidence): string {
+		const verify = p.verifications.at(-1);
+		if (verify) {
+			const name = verify.command.split(/\s+/).slice(0, 3).join(" ");
+			return `${verify.passed ? "ran" : "failed"} ${name}${verify.after_last_change ? "" : " (stale)"}`;
+		}
+		const file = p.files_changed.at(-1);
+		if (file) {
+			const base = file.path.split(/[\\/]/).at(-1) ?? file.path;
+			return `${file.tool} ${base}`;
+		}
+		const cmd = p.commands.at(-1);
+		if (cmd) return cmd.command.split(/\s+/).slice(0, 3).join(" ");
+		return p.request ? head(p.request, 48) : "no tool trail";
+	}
+
+	/**
+	 * Session story for the HUD: previous prompt, current prompt, overall
+	 * heading. Facts come from the ledger (files, commands, status), not
+	 * from a fresh Jev call.
+	 */
+	hudStory(): HudStory {
+		const prompts = this.file.prompts;
+		const now = prompts.at(-1);
+		const prev = prompts.at(-2);
+		const chapters = prompts.map((p) => p.phases.at(-1)?.phase).filter((p): p is string => !!p);
+		return {
+			now: now
+				? `now  ${now.status}  ${formatPhaseSpan(now)}  ${this.fact(now)}${lastFit(now)}`
+				: undefined,
+			prev: prev ? `prev ${prev.status}  ${formatPhaseSpan(prev)}  ${this.fact(prev)}${lastFit(prev)}` : undefined,
+			session: now ? `session ${now.status}  ${chapters.join("→") || "-"}  ${prompts.length} prompt${prompts.length === 1 ? "" : "s"}` : undefined,
+		};
+	}
+
 	show(ctx: ExtensionCommandContext): void {
 		const p = this.file.prompts.at(-1);
 		if (!p) return void ctx.ui.notify(`evidence: nothing yet · ${this.path ?? "(no file)"}`, "info");
@@ -424,7 +616,8 @@ export class EvidenceStore {
 			`files changed (${p.files_changed.length}): ${p.files_changed.map((f) => `${f.tool} ${f.path}`).slice(-8).join(", ") || "-"}`,
 			`commands (${p.commands.length}): ${p.commands.slice(-6).map((c) => `${c.kind}:${c.command}${c.is_error ? " ✗" : ""}`).join(" · ") || "-"}`,
 			`verifications: ${p.verifications.map((v) => `${v.kind} ${v.passed ? "✓" : "✗"}${v.after_last_change ? " (current)" : " (stale)"}`).join(", ") || "-"}`,
-			`phases: ${p.phases.map((e) => e.phase).join(" → ") || "-"}${p.invariants.length ? ` · invariants ${p.invariants.map((i) => i.name).join(",")}` : ""}`,
+			`phases: ${p.phases.map((e) => (e.from ? `${e.from}→${e.phase}` : e.phase) + (e.fit && e.fit !== "ok" ? `(${e.fit})` : "")).join(" · ") || "-"}${p.invariants.length ? ` · invariants ${p.invariants.map((i) => i.name).join(",")}` : ""}`,
+			`moves (${this.file.moves.length}): ${this.file.moves.slice(-8).map((m) => `${m.from ?? "start"}→${m.to} ${m.fit}`).join(" · ") || "-"}`,
 			`runs: ${p.runs.length}${p.runs.at(-1)?.claims_done !== undefined ? ` · last done=${p.runs.at(-1)!.claims_done!.toFixed(2)} verified=${p.runs.at(-1)!.verified!.toFixed(2)}` : ""}`,
 			`decisions: ${p.decisions.slice(-6).map((d) => `${d.kind}:${d.action}${d.agreed === undefined ? "" : d.agreed ? " ✓" : " ✗"}`).join(", ") || "-"}`,
 			`file: ${this.path ?? "(disabled)"}`,

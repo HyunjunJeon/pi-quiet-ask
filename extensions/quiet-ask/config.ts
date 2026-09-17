@@ -45,7 +45,7 @@ export interface HistoryConfig {
 
 export interface GraphConfig {
 	enabled: boolean;
-	/** shadow: HUD + history only. enforce: steer once per invariant per prompt. */
+	/** enforce (default): steer once per invariant per prompt. shadow: HUD + history only. */
 	mode: PackMode;
 	hud: boolean;
 	/** Consecutive stalled explore turns before `explore_loop` fires. */
@@ -104,7 +104,7 @@ export const DEFAULT_CONFIG: QuietAskConfig = {
 	},
 	graph: {
 		enabled: true,
-		mode: "shadow",
+		mode: "enforce",
 		hud: true,
 		exploreLoop: 4,
 		drift: 0.8,

@@ -16,6 +16,11 @@
       "type": "array",
       "maxItems": 50,
       "items": { "$ref": "#/$defs/prompt" }
+    },
+    "moves": {
+      "type": "array",
+      "description": "Session trail of from→to steps with a deterministic fit, for later evaluation.",
+      "items": { "$ref": "#/$defs/move" }
     }
   },
   "$defs": {
@@ -107,12 +112,43 @@
       "properties": {
         "run": { "type": "integer", "minimum": 1 },
         "turn": { "type": "integer", "minimum": 0 },
+        "from": { "type": ["string", "null"] },
         "phase": { "type": "string" },
         "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
         "progress": { "type": "number", "minimum": 0, "maximum": 1 },
         "drift": { "type": "number", "minimum": 0, "maximum": 1 },
-        "tools": { "type": "array", "items": { "type": "string" } }
+        "tools": { "type": "array", "items": { "type": "string" } },
+        "files": { "type": "array", "items": { "type": "string" } },
+        "checks": { "type": "array", "items": { "type": "string" } },
+        "invariants": { "type": "array", "items": { "type": "string" } },
+        "fit": { "$ref": "#/$defs/moveFit" },
+        "reason": { "type": "string" }
       }
+    },
+    "move": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "prompt", "turn", "from", "to", "confidence", "progress", "drift", "tools", "files", "checks", "invariants", "fit", "reason"],
+      "properties": {
+        "at": { "type": "string", "format": "date-time" },
+        "prompt": { "type": "integer", "minimum": 1 },
+        "turn": { "type": "integer", "minimum": 0 },
+        "from": { "type": ["string", "null"] },
+        "to": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "progress": { "type": "number", "minimum": 0, "maximum": 1 },
+        "drift": { "type": "number", "minimum": 0, "maximum": 1 },
+        "tools": { "type": "array", "items": { "type": "string" } },
+        "files": { "type": "array", "items": { "type": "string" } },
+        "checks": { "type": "array", "items": { "type": "string" } },
+        "invariants": { "type": "array", "items": { "type": "string" } },
+        "fit": { "$ref": "#/$defs/moveFit" },
+        "reason": { "type": "string" }
+      }
+    },
+    "moveFit": {
+      "type": "string",
+      "enum": ["ok", "skip", "loop", "drift", "mismatch"]
     },
     "run": {
       "type": "object",
