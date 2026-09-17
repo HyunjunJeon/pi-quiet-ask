@@ -41,9 +41,7 @@ pi install npm:@eko24ive/pi-ask
 pi -e ./extensions/quiet-ask/index.ts
 ```
 
-This repository is private. `pi install git:github.com/HyunjunJeon/pi-quiet-ask` needs
-GitHub credentials that can read it (SSH agent, `gh`, or a token). For Claude Code,
-Codex, and other agents that are not pi, use the public skill instead:
+For Claude Code, Codex, and other agents that are not pi, use the companion skill:
 [`HyunjunJeon/jev-judgment`](https://github.com/HyunjunJeon/jev-judgment)
 (`npx skills add HyunjunJeon/jev-judgment`).
 
