@@ -25,6 +25,10 @@ export const STUCK_PACK: PackSpec = {
 		fixable_locally: {
 			noul: "Can the agent fix this failure by changing its own approach, as opposed to needing something from the user (credentials, a decision, network, an installed tool)?",
 		},
+		failure_target: {
+			choice: "Which observed failed command is repeating? Choose none if the listed commands are not the repeated failure.",
+			optionsFrom: "recent_failures",
+		},
 	},
 	rules: [
 		{

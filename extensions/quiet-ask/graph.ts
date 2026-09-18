@@ -26,7 +26,8 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, TurnEndEvent } from "@earendil-works/pi-coding-agent";
-import { choice, noul } from "@typesafe-ai/sdk";
+import { choice, noul, type Questions } from "@typesafe-ai/sdk";
+import { consumeTarget } from "./choice.ts";
 import type { JevClient } from "./client.ts";
 import type { QuietAskConfig } from "./config.ts";
 import { buildConversationState } from "./context.ts";
@@ -35,6 +36,8 @@ import type { EvidenceStore, HudStory } from "./evidence.ts";
 import type { HistoryStore } from "./history.ts";
 import { prepareState } from "./redact.ts";
 import type { RuntimeSettings } from "./settings.ts";
+import { buildSpace, type ObservedSpace, spaceFactsFromPrompt } from "./space.ts";
+import { GENERIC_INVARIANT_STEER, renderInvariantSteer } from "./steer.ts";
 
 export const PHASES = ["clarify", "explore", "plan", "implement", "verify", "report", "other"] as const;
 export type Phase = (typeof PHASES)[number];
@@ -54,6 +57,15 @@ const GRAPH_QUESTIONS = {
 	progress: noul("Did this turn move `user_request` forward (new information, a change, a check), rather than repeating or stalling?"),
 	drift: noul("Is this turn working on something `user_request` did not ask for?"),
 } as const;
+
+const VERIFY_TARGET = "If this turn is reporting after untested changes, which observed file or command should be checked? Choose none if no listed item is a real check.";
+
+/** Phase questions plus a speculative verify_target head from the ledger. */
+export function graphQuestions(space: ObservedSpace): Questions {
+	const questions: Questions = { ...GRAPH_QUESTIONS };
+	if (space.options.length > 0) questions.verify_target = choice(VERIFY_TARGET, space.criteria);
+	return questions;
+}
 
 export interface TurnRecord {
 	turn: number;
@@ -86,12 +98,8 @@ export interface GraphConfig {
 	stalled: number;
 }
 
-const INVARIANT_STEER: Record<string, string> = {
-	report_without_verify:
-		"The graph shows code was changed (implement) but no verify phase ran before reporting. Run the relevant test, build, or type check now and include the real result in your report.",
-	explore_loop: "Exploration has not produced progress for several turns. Commit to a plan from what you already know and start implementing, or ask the user the one question that is blocking you.",
-	drift: "Recent turns appear to work on something the user did not ask for. Return to the original request; mention the tangent in one sentence if it matters.",
-};
+/** @deprecated Use GENERIC_INVARIANT_STEER / renderInvariantSteer. */
+export const INVARIANT_STEER = GENERIC_INVARIANT_STEER;
 
 function emptyGraph(): GraphState {
 	const visits = Object.fromEntries(PHASES.map((p) => [p, 0])) as Record<Phase, number>;
@@ -304,9 +312,17 @@ export class GraphTracker {
 			},
 			{ stringChars: this.config.argumentChars, maxChars: this.config.maxStateChars },
 		);
-		const call = await this.client.ask(state, GRAPH_QUESTIONS, { signal: ctx.signal });
+		const space = this.evidence ? buildSpace("verify_targets", spaceFactsFromPrompt(this.evidence.current())) : buildSpace("verify_targets", {});
+		const questions = graphQuestions(space);
+		const call = await this.client.ask(state, questions, { signal: ctx.signal });
 		if (!call.result) return;
-		const a = call.result.answers;
+		const a = call.result.answers as unknown as {
+			phase: { choice: Phase; confidence: number };
+			progress: { noul: number };
+			drift: { noul: number };
+			verify_target?: unknown;
+		};
+		const verifyTarget = consumeTarget(a.verify_target, space);
 		const record: TurnRecord = {
 			turn: event.turnIndex,
 			phase: a.phase.choice,
@@ -339,7 +355,12 @@ export class GraphTracker {
 				this.steered.add(name);
 				stats.intervened += 1;
 				this.pi.sendMessage(
-					{ customType: "pi-quiet-ask:steer", content: `[pi-quiet-ask graph] ${INVARIANT_STEER[name]}`, display: true, details: { pack: "graph", matched: [name] } },
+					{
+						customType: "pi-quiet-ask:steer",
+						content: `[pi-quiet-ask graph] ${renderInvariantSteer(name, name === "report_without_verify" ? verifyTarget : undefined)}`,
+						display: true,
+						details: { pack: "graph", matched: [name], target: verifyTarget?.value },
+					},
 					{ deliverAs: "steer" },
 				);
 				if (ctx.hasUI) ctx.ui.notify(`pi-quiet-ask graph steered the agent: ${name}`, "info");

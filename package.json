@@ -1,6 +1,6 @@
 {
   "name": "pi-quiet-ask",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "TypeSafe Jev as the pi coding agent's quiet decision layer: a rule engine of declarative packs (gate tool calls, judge command output, classify intent, catch unverified 'done' claims, detect retry loops), a task graph HUD, triage of pi-ask questions the conversation already answers, and a reviewable history of every decision",
   "license": "MIT",
   "author": "HyunjunJeon <jeonhj920@gmail.com>",

@@ -9,6 +9,7 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { buildConversationState } from "../context.ts";
+import type { SpaceFacts } from "../space.ts";
 import type { StateSource } from "./pack.ts";
 
 /** What a hook handed us, flattened to what sources need. */
@@ -40,7 +41,11 @@ export interface ToolBrief {
 export type GraphSnapshotProvider = () => unknown;
 
 /** Supplied by the evidence ledger: a compact state view plus plain facts for rules. */
-export type EvidenceSnapshotProvider = () => { state: Record<string, unknown>; facts: Record<string, unknown> };
+export type EvidenceSnapshotProvider = () => {
+	state: Record<string, unknown>;
+	facts: Record<string, unknown>;
+	space?: SpaceFacts;
+};
 
 export interface StateProviders {
 	graph?: GraphSnapshotProvider;

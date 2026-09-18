@@ -20,6 +20,11 @@ The product is a **closed loop**: observe → closed question → rule →
 act or record → observe again. Your job is to leave traces the loop
 can read, and to ask Jev only closed questions with relevant state.
 
+When a set already lives in the evidence ledger (changed files, failed
+commands, stale checks), do not invent its members. Call `jev_choose`
+with the space name. Packs may use `"optionsFrom": "verify_targets"`
+the same way: Jev picks an observed id or `none`.
+
 ## Leave traces the loop can see
 
 - Change files with `write` / `edit`. Do not "apply" a patch only in
@@ -40,7 +45,7 @@ A closed question has a finite answer: yes-probability (`noul`), one
 label (`choice`), or a position on ordered levels (`score`). Never ask
 Jev to "explain", "summarize", or "decide what to do".
 
-When you call `jev_ask` or write a pack question:
+When you call `jev_ask`, `jev_choose`, or write a pack question:
 
 1. Ask about **what the state says**, not what a reader should conclude.
 2. One judgement per question. Split "is it a test failure, and is it
@@ -96,10 +101,14 @@ Rules test headline values (`destructive >= vars.destructive`,
 `intent == "debug"`, `not verified_after_change`). Unknown paths are
 false. Do not invent actions outside `block`, `confirm`, `annotate`,
 `steer`, `set_thinking`, `set_tools`, `warn`, `status`, `tag`, `allow`.
+A Choice may use `"optionsFrom": "verify_targets"` (or `unverified_files`,
+`recent_failures`, `commands`, `argument_paths`) instead of a fixed
+`options` map; the harness rebuilds the set from the ledger each time.
 
 ## Do not
 
-- Call `jev_ask` to write the code or to replace a tool you should run.
+- Call `jev_ask` to write the code, to replace a tool you should run, or
+  to invent the members of a set the ledger already has. Use `jev_choose`.
 - Paste secrets, `.env`, or tokens into `jev_ask` state. Redaction is
   a backstop, not the plan.
 - Claim completion, then skip the check because "it should work".

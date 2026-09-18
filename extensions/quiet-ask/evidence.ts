@@ -34,6 +34,7 @@ import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { evidenceDir, type QuietAskConfig } from "./config.ts";
 import type { DecisionOutcome, DecisionRecord, HistoryStore } from "./history.ts";
+import type { SpaceFacts } from "./space.ts";
 
 /** Published schema so a ledger file is validatable (and editable) on its own. */
 export const EVIDENCE_SCHEMA_URL = "https://raw.githubusercontent.com/HyunjunJeon/pi-quiet-ask/main/schemas/evidence.schema.json";
@@ -538,10 +539,20 @@ export class EvidenceStore {
 	}
 
 	/** Compact view for packs (`state: ["evidence"]`) and rule facts. */
-	snapshot(): { state: Record<string, unknown>; facts: Record<string, unknown> } {
+	snapshot(): { state: Record<string, unknown>; facts: Record<string, unknown>; space: SpaceFacts } {
 		const p = this.file.prompts.at(-1);
-		if (!p) return { state: {}, facts: { files_changed: 0, verifications: 0, verified_after_change: false } };
+		if (!p) return { state: {}, facts: { files_changed: 0, verifications: 0, verified_after_change: false }, space: {} };
 		const verifiedAfter = p.verifications.some((v) => v.after_last_change && v.passed);
+		const space: SpaceFacts = {
+			files_changed: p.files_changed.map((f) => ({ path: f.path })),
+			commands: p.commands.map((c) => ({ command: c.command, kind: c.kind, is_error: c.is_error })),
+			verifications: p.verifications.map((v) => ({
+				command: v.command,
+				kind: v.kind,
+				passed: v.passed,
+				after_last_change: v.after_last_change,
+			})),
+		};
 		return {
 			state: {
 				status: p.status,
@@ -555,6 +566,7 @@ export class EvidenceStore {
 				last_run: p.runs.at(-1)?.final_text,
 			},
 			facts: { files_changed: p.files_changed.length, verifications: p.verifications.length, verified_after_change: verifiedAfter },
+			space,
 		};
 	}
 

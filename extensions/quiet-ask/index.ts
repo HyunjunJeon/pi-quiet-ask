@@ -11,7 +11,8 @@
  *             the user drops in ~/.pi/agent/pi-quiet-ask/packs or .pi/pi-quiet-ask/packs
  *   graph     the task graph: which workflow phase each turn is in, HUD, invariants
  *   triage    should pi-ask's `ask_user` reach the user at all?
- *   jev_ask   a tool so the model can ask the same kind of question itself
+ *   jev_ask     a tool so the model can ask typed questions itself
+ *   jev_choose  pick one observed ledger item; the harness owns the set
  *
  * Everything fails open, everything is recorded, `/quiet` controls it.
  *
@@ -28,6 +29,7 @@ import { EvidenceStore } from "./evidence.ts";
 import { GraphTracker } from "./graph.ts";
 import { formatRecord, HistoryStore, showHistory } from "./history.ts";
 import { registerJevAsk } from "./jev-ask.ts";
+import { registerJevChoose } from "./jev-choose.ts";
 import { BUILTIN_PACKS } from "./packs/index.ts";
 import { createRuntimeSettings, type RuntimeSettings } from "./settings.ts";
 import { ASK_USER_TOOL, registerTriage } from "./triage.ts";
@@ -68,7 +70,7 @@ function formatStatus(rt: Runtime, hasAskUser: boolean): string {
 		`pi-quiet-ask · model ${rt.config.model} · key from ${rt.keySource} · judges ${rt.settings.enabled ? "on" : "off"}`,
 		...rt.engine.packs.map((pack) => `  ${formatPackLine(pack, rt)}`),
 		`  ${rt.settings.graphEnabled ? "on " : "off"} graph          turn_end           ${rt.config.graph.mode.padEnd(8)} builtin  3 invariants · ${g ? `${g.judged} turns, ${g.matched} flagged, ${g.intervened} steered` : "idle"}`,
-		`triage: ${rt.settings.triageMode}${hasAskUser ? "" : " (ask_user tool not found — install @eko24ive/pi-ask)"} · auto>=${rt.config.triage.autoAnswer} suggest>=${rt.config.triage.suggest} · ${c.triageJudged} judged, ${c.triageAuto} auto, ${c.triageSuggested} suggested, ${c.triagePassed} passed · jev_ask: ${c.jevAsk}`,
+		`triage: ${rt.settings.triageMode}${hasAskUser ? "" : " (ask_user tool not found — install @eko24ive/pi-ask)"} · auto>=${rt.config.triage.autoAnswer} suggest>=${rt.config.triage.suggest} · ${c.triageJudged} judged, ${c.triageAuto} auto, ${c.triageSuggested} suggested, ${c.triagePassed} passed · jev_ask: ${c.jevAsk} · jev_choose: ${c.jevChoose}`,
 		`jev: ${s.calls} calls, ${s.errors} errors, ${s.cacheHits} cache hits (${rt.client.cacheSize} cached), avg ${avg}ms, ${s.inputTokens}+${s.outputTokens} tokens`,
 		...(rt.packErrors.length ? [`pack errors: ${rt.packErrors.join(" | ")}`] : []),
 		`packs dir: ${userPackDir()} · history: ${historyFilePath()}`,
@@ -122,6 +124,7 @@ export default function quietAskExtension(pi: ExtensionAPI): void {
 		if (ctx.hasUI && config.graph.hud) graph.draw(ctx);
 		registerTriage(pi, client, config, settings, history);
 		registerJevAsk(pi, client, config, settings, history);
+		registerJevChoose(pi, client, config, settings, history, evidence);
 
 		if (loaded.errors.length && ctx.hasUI) ctx.ui.notify(`pi-quiet-ask: ${loaded.errors.length} pack(s) failed to load — /quiet for details`, "warning");
 		const hasAskUser = pi.getAllTools().some((tool) => tool.name === ASK_USER_TOOL);

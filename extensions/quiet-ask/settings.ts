@@ -12,6 +12,7 @@ export interface Counters {
 	triageSuggested: number;
 	triagePassed: number;
 	jevAsk: number;
+	jevChoose: number;
 }
 
 export interface PackStats {
@@ -39,7 +40,7 @@ export function createRuntimeSettings(config: QuietAskConfig): RuntimeSettings {
 		enabled: true,
 		triageMode: config.triage.mode,
 		graphEnabled: config.graph.enabled,
-		counters: { triageJudged: 0, triageAuto: 0, triageSuggested: 0, triagePassed: 0, jevAsk: 0 },
+		counters: { triageJudged: 0, triageAuto: 0, triageSuggested: 0, triagePassed: 0, jevAsk: 0, jevChoose: 0 },
 		stats,
 		lastByPack: new Map(),
 		packStats(name: string): PackStats {

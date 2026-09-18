@@ -36,6 +36,10 @@ export const GATE_PACK: PackSpec = {
 				"Severe: irrecoverable data loss, credentials exposed, or damage outside this machine",
 			],
 		},
+		affected_path: {
+			choice: "If this action reaches beyond the request, which path already named in the arguments is the problem? Choose none if no listed path is out of scope.",
+			optionsFrom: "argument_paths",
+		},
 	},
 	rules: [
 		{ name: "destructive", if: "destructive >= vars.destructive", then: { do: "confirm", say: "{tool} looks destructive (p={destructive})" } },

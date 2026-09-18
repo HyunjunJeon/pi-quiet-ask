@@ -21,11 +21,12 @@ and a **task graph** that tracks which workflow phase each turn is in.
 | `gate` | `tool_call` (bash/write/edit) | destructive? exfiltration? scope? impact | shadow → warn |
 | `output` | `tool_result` (bash) | leaks a secret? failure class? | annotate the result |
 | `intent` | `before_agent_start` | what kind of task? ambiguous? | tag + footer |
-| `honest_finish` | `agent_end` | claims done? verified? hedged? | shadow → warn |
-| `stuck` | `turn_end` (with a failure) | same failure again? fixable here? | shadow → warn |
-| `graph` | `turn_end` | which phase? progress? drift? | HUD + steer if verify skipped |
+| `honest_finish` | `agent_end` | claims done? verified? hedged? which observed check? | shadow → warn, names the check |
+| `stuck` | `turn_end` (with a failure) | same failure again? fixable here? which command? | shadow → warn, names the command |
+| `graph` | `turn_end` | which phase? progress? drift? which observed check? | HUD + steer naming the check |
 | `triage` | `tool_call` (ask_user) | which option does the context pick? | suggest / auto-answer |
 | `jev_ask` | a tool | whatever the model asks | answer |
+| `jev_choose` | a tool | pick one ledger item | observed value or `none` |
 | `evidence` | (no Jev call) | — | JSON ledger of the work state |
 
 ## Install
@@ -92,7 +93,7 @@ recorded `shadow:confirm … [destructive,exfiltration]` for the same call.
 | `state` | which sources to send — see below. Everything is redacted and truncated before it leaves the machine |
 | `cacheSeconds` | identical state + questions judged once per this many seconds (gate uses 120) |
 | `vars` | numbers your rules reference as `vars.x`; overridable from config without copying the pack |
-| `questions` | `{ "noul": "…" }` · `{ "choice": "…", "options": { label: description \| null } }` · `{ "score": "…", "levels": [..] }` |
+| `questions` | `{ "noul": "…" }` · `{ "choice": "…", "options": { label: description \| null } }` · `{ "choice": "…", "optionsFrom": "verify_targets" }` · `{ "score": "…", "levels": [..] }` |
 | `rules` | ordered; every rule whose `if` holds contributes its actions; an `allow` stops evaluation |
 | `summary` / `status` | templates for the history line and the footer; `{path}` interpolates any scope value |
 
@@ -348,6 +349,17 @@ completes, so `/quiet history triage` shows Jev's pick next to the final answer 
 A tool for the model itself: `jev_ask({ state, questions: [{ id, type: "noul" | "choice" | "score", instructions, options? | levels? }] })`
 returns Jev's calibrated answers (up to 16 questions per call) instead of having the model reason in
 prose about a closed decision. Recorded like everything else (`/quiet history jev_ask`).
+
+## Observed targets and `jev_choose`
+
+Jev cannot invent the members of a set. When the ledger already has the candidates — changed files,
+stale checks, failed commands, paths named in arguments — the harness numbers them and Jev picks an
+id or `none`. Graph / `honest_finish` / `stuck` steers then name that file or command. An invented
+id is dropped and the old generic sentence is used.
+
+`jev_choose({ space: "verify_targets" | "unverified_files" | "recent_failures" | "commands" | "argument_paths" })`
+is the same contract as a tool: the model does not pass the option list. Packs can do the same with
+`"optionsFrom": "verify_targets"` on a Choice question.
 
 ## Commands
 

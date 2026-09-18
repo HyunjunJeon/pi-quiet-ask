@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.3.0] - 2026-09-18
+
+Steers and confirms can now name a file or command that was already
+observed. Jev still answers on the same request as before; the extra
+Choice head is speculative. Empty ledger or an invented id falls back
+to the 0.2 generic sentence. This is not a faster 0.2 — it is a more
+specific 0.2.
+
+### Changed
+
+- `report_without_verify`, `honest_finish`, and `stuck` steers say
+  *which* observed file or command to run (or stop retrying), instead
+  of "the relevant check".
+- `gate` confirm titles append the path Jev picked from the tool
+  arguments, when one is listed.
+
+### Added
+
+- Pack questions may set
+  `"optionsFrom": "verify_targets" | "unverified_files" | "recent_failures" | "commands" | "argument_paths"`.
+  Criteria are rebuilt on every judgement. `none` is always offered.
+- `jev_choose` tool: the harness owns the option list. Use it instead of
+  `jev_ask` when the ledger already has the set.
+
 ## [0.2.0] - 2026-09-17
 
 Renamed from `pi-typesafe` to `pi-quiet-ask`. Config, commands, and the

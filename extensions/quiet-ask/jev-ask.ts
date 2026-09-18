@@ -91,6 +91,7 @@ export function registerJevAsk(
 		promptSnippet: "jev_ask: typed yes/no, choice, or score judgements about text with calibrated probabilities",
 		promptGuidelines: [
 			"Use jev_ask for closed judgements (relevant? which bucket? how severe?) where a probability is more useful than a sentence.",
+			"If the evidence ledger already has the set (changed files, failed commands), call jev_choose instead of inventing options here.",
 		],
 		parameters: JevAskParams,
 		async execute(toolCallId, params, signal, _onUpdate, ctx) {

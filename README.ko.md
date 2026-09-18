@@ -20,11 +20,12 @@
 | `gate` | `tool_call` (bash/write/edit) | 파괴? 유출? 범위 밖? 피해 정도 | shadow → 경고 |
 | `output` | `tool_result` (bash) | 시크릿 유출? 실패 종류? | 결과에 주석 |
 | `intent` | `before_agent_start` | 어떤 종류의 작업? 모호한가? | 태그 + 푸터 |
-| `honest_finish` | `agent_end` | 완료 주장? 검증됨? 완곡한가? | shadow → 경고 |
-| `stuck` | `turn_end` (실패 포함) | 같은 실패가 반복? 여기서 고칠 수 있나? | shadow → 경고 |
-| `graph` | `turn_end` | 어느 단계? 진전? 이탈? | HUD + 검증 생략 시 조향 |
+| `honest_finish` | `agent_end` | 완료 주장? 검증됨? 완곡한가? 관측된 검사는? | shadow → 경고, 검사 이름 |
+| `stuck` | `turn_end` (실패 포함) | 같은 실패가 반복? 여기서 고칠 수 있나? 어느 명령? | shadow → 경고, 명령 이름 |
+| `graph` | `turn_end` | 어느 단계? 진전? 이탈? 관측된 검사는? | HUD + 검사를 가리키는 조향 |
 | `triage` | `tool_call` (ask_user) | 문맥이 이미 고르는 옵션은? | 추천 / 자동응답 |
 | `jev_ask` | 툴 | 모델이 묻는 것 | 답 |
+| `jev_choose` | 툴 | 장부의 한 항목을 고름 | 관측된 값 또는 `none` |
 | `evidence` | (Jev 호출 없음) | — | 작업 상태 JSON 장부 |
 
 ## 설치
@@ -91,7 +92,7 @@ E2E에서 쓴, 히스토리 재작성을 막는 프로젝트 팩
 | `state` | 보낼 소스. 나가기 전에 마스킹·절단된다 |
 | `cacheSeconds` | 같은 state + 질문을 이 초 동안 한 번만 판정 (gate는 120) |
 | `vars` | 규칙이 `vars.x`로 읽는 숫자. 팩을 복사하지 않고 설정에서 덮어쓸 수 있다 |
-| `questions` | `{ "noul": "…" }` · `{ "choice": "…", "options": { label: description \| null } }` · `{ "score": "…", "levels": [..] }` |
+| `questions` | `{ "noul": "…" }` · `{ "choice": "…", "options": { label: description \| null } }` · `{ "choice": "…", "optionsFrom": "verify_targets" }` · `{ "score": "…", "levels": [..] }` |
 | `rules` | 순서대로. `if`가 참인 규칙의 행동이 모두 쌓인다. `allow`는 평가를 멈춘다 |
 | `summary` / `status` | 히스토리 한 줄과 푸터용 템플릿. `{path}`는 스코프 값을 끼워 넣는다 |
 
@@ -346,6 +347,17 @@ Jev를 호출하지 않는다. 사용자 프롬프트마다
 `jev_ask({ state, questions: [{ id, type: "noul" | "choice" | "score", instructions, options? | levels? }] })`.
 닫힌 결정을 산문으로 고민하는 대신 Jev의 보정된 답을 받는다 (호출당 최대 16질문).
 다른 것과 같이 기록된다 (`/quiet history jev_ask`).
+
+## 관측된 대상과 `jev_choose`
+
+Jev는 집합의 원소를 발명할 수 없다. 장부에 이미 후보가 있으면 — 바뀐 파일, 낡은 검사,
+실패한 명령, 인자에 적힌 경로 — 하네스가 번호를 매기고 Jev는 id 또는 `none`만 고른다.
+그래프 / `honest_finish` / `stuck` 조향은 그 파일이나 명령을 이름으로 넣는다. 발명된 id는
+버리고 예전 일반 문장을 쓴다.
+
+`jev_choose({ space: "verify_targets" | "unverified_files" | "recent_failures" | "commands" | "argument_paths" })`
+는 같은 계약을 툴로 노출한다. 모델이 옵션 목록을 넘기지 않는다. 팩은 Choice에
+`"optionsFrom": "verify_targets"` 로 같은 일을 한다.
 
 ## 명령
 

@@ -16,17 +16,20 @@
  */
 
 import type { ExtensionAPI, ExtensionContext, ToolCallEvent, ToolResultEvent } from "@earendil-works/pi-coding-agent";
+import { consumeTarget } from "../choice.ts";
 import type { JevClient } from "../client.ts";
 import type { QuietAskConfig } from "../config.ts";
 import type { HistoryStore } from "../history.ts";
 import { prepareState } from "../redact.ts";
 import type { RuntimeSettings } from "../settings.ts";
+import { type ObservedOption, type ObservedSpace, type SpaceFacts, spaceFallback } from "../space.ts";
+import { renderHonestFinishSteer, renderStuckLoopSteer, renderStuckNeedsUserSteer } from "../steer.ts";
 import { render, type Scope, test } from "./expr.ts";
-import { type Action, type Hook, INTERVENING, type Pack, type PackMode } from "./pack.ts";
+import { type Action, type Hook, INTERVENING, type Pack, type PackMode, resolvePackQuestions } from "./pack.ts";
 import { buildState, type HookInput, type StateProviders } from "./state.ts";
 
 /** Tools this package registers or that another judge owns; never judged by packs. */
-const SKIP_TOOLS = new Set(["jev_ask", "ask_user"]);
+const SKIP_TOOLS = new Set(["jev_ask", "jev_choose", "ask_user"]);
 
 export interface PackVerdict {
 	pack: string;
@@ -147,12 +150,16 @@ export class Engine {
 		const { client, config } = this.deps;
 		const built = buildState(pack.state, input, ctx, this.deps.providers ?? {}, config.outputChars);
 		const { state, redactions } = prepareState(built.state, { stringChars: config.argumentChars, maxChars: config.maxStateChars });
-		const call = await client.ask(state, pack.questions, { signal: ctx.signal, cacheSeconds: pack.cacheSeconds });
+		const facts = spaceFactsFor(this.deps.providers?.evidence?.(), input.arguments);
+		const resolved = resolvePackQuestions(pack, facts);
+		const call = await client.ask(state, resolved.questions, { signal: ctx.signal, cacheSeconds: pack.cacheSeconds });
 		if (!call.result) return undefined;
 
 		const answers = { ...call.result.answers } as Record<string, unknown>;
+		const targets = bindTargets(answers, resolved.spaces);
 		const scope: Scope = {
 			...answersToScope(answers),
+			...targetScope(targets, resolved.spaces),
 			...built.scope,
 			vars: pack.vars,
 			redactions,
@@ -167,7 +174,7 @@ export class Engine {
 		for (const rule of pack.rules) {
 			if (!test(rule.expr, scope)) continue;
 			matched.push(rule.name);
-			actions.push(...rule.actions);
+			actions.push(...retargetActions(pack.name, rule.name, rule.actions, targets));
 			if (rule.actions.some((a) => a.do === "allow")) break;
 		}
 		scope.matched = matched;
@@ -403,4 +410,43 @@ export class Engine {
 		if (notes.length === 0) return undefined;
 		return { content: [...event.content, { type: "text", text: notes.join("\n") }] };
 	}
+}
+
+function spaceFactsFor(evidence: ReturnType<NonNullable<StateProviders["evidence"]>> | undefined, args: unknown): SpaceFacts {
+	return { ...(evidence?.space ?? {}), arguments: args };
+}
+
+function bindTargets(answers: Record<string, unknown>, spaces: Record<string, ObservedSpace>): Record<string, ObservedOption | undefined> {
+	const targets: Record<string, ObservedOption | undefined> = {};
+	for (const [id, space] of Object.entries(spaces)) targets[id] = consumeTarget(answers[id], space);
+	return targets;
+}
+
+function targetScope(targets: Record<string, ObservedOption | undefined>, spaces: Record<string, ObservedSpace>): Scope {
+	const scope: Scope = {};
+	for (const [id, space] of Object.entries(spaces)) {
+		const option = targets[id];
+		scope[id] = {
+			value: option?.value ?? spaceFallback(space.name),
+			choice: option?.id ?? "none",
+			observed: Boolean(option),
+			kind: option?.kind ?? "",
+		};
+	}
+	return scope;
+}
+
+/** Code owns the verb; Jev only names an observed member. Invented ids keep the generic say. */
+function retargetActions(pack: string, rule: string, actions: Action[], targets: Record<string, ObservedOption | undefined>): Action[] {
+	return actions.map((action) => {
+		if (pack === "honest_finish" && action.do === "steer") return { ...action, say: renderHonestFinishSteer(targets.verify_target) };
+		if (pack === "stuck" && action.do === "steer") {
+			return { ...action, say: rule === "needs_user" ? renderStuckNeedsUserSteer(targets.failure_target) : renderStuckLoopSteer(targets.failure_target) };
+		}
+		if (pack === "gate" && action.do === "confirm" && targets.affected_path) {
+			const extra = ` · ${targets.affected_path.value}`;
+			return { ...action, say: action.say?.includes(targets.affected_path.value) ? action.say : `${action.say ?? ""}`.replace(/\s*$/, extra) };
+		}
+		return action;
+	});
 }

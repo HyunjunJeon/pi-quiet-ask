@@ -16,6 +16,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type ChoiceCriteria, choice, noul, type Questions, type ScoreCriteria, score } from "@typesafe-ai/sdk";
+import { buildSpace, isSpaceName, type ObservedSpace, SPACE_NAMES, type SpaceFacts, type SpaceName } from "../space.ts";
 import { type Expr, ExprError, parseExpr } from "./expr.ts";
 
 export type Hook = "tool_call" | "tool_result" | "before_agent_start" | "turn_end" | "agent_end";
@@ -95,7 +96,12 @@ export interface CompiledRule {
 export type QuestionSpec =
 	| { noul: string }
 	| { choice: string; options: Record<string, string | null> }
+	| { choice: string; optionsFrom: SpaceName }
 	| { score: string; levels: string[] };
+
+export function isOptionsFrom(spec: QuestionSpec): spec is { choice: string; optionsFrom: SpaceName } {
+	return "optionsFrom" in spec;
+}
 
 export interface PackSpec {
 	name: string;
@@ -150,6 +156,10 @@ function toQuestions(specs: Record<string, QuestionSpec>, pack: string): Questio
 		if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(id)) throw new PackError(`${pack}: question id "${id}" must be an identifier`);
 		if ("noul" in spec) out[id] = noul(spec.noul);
 		else if ("choice" in spec) {
+			if (isOptionsFrom(spec)) {
+				if (!isSpaceName(spec.optionsFrom)) throw new PackError(`${pack}: choice "${id}" optionsFrom must be ${SPACE_NAMES.join("|")}`);
+				continue;
+			}
 			if (!spec.options || Object.keys(spec.options).length < 2) throw new PackError(`${pack}: choice "${id}" needs 2+ options`);
 			out[id] = choice(spec.choice, spec.options as ChoiceCriteria);
 		} else if ("score" in spec) {
@@ -158,6 +168,24 @@ function toQuestions(specs: Record<string, QuestionSpec>, pack: string): Questio
 		} else throw new PackError(`${pack}: question "${id}" must have noul, choice, or score`);
 	}
 	return out;
+}
+
+/**
+ * Rebuild Choice criteria from the current ledger. Static questions stay
+ * as compiled; `optionsFrom` heads are omitted when the space is only `none`
+ * (Choice needs two options).
+ */
+export function resolvePackQuestions(pack: Pack, facts: SpaceFacts): { questions: Questions; spaces: Record<string, ObservedSpace> } {
+	const questions: Questions = { ...pack.questions };
+	const spaces: Record<string, ObservedSpace> = {};
+	for (const [id, spec] of Object.entries(pack.questionSpecs)) {
+		if (!isOptionsFrom(spec)) continue;
+		const space = buildSpace(spec.optionsFrom, facts);
+		spaces[id] = space;
+		if (space.options.length === 0) continue;
+		questions[id] = choice(spec.choice, space.criteria);
+	}
+	return { questions, spaces };
 }
 
 function compileRules(rules: RuleSpec[], hook: Hook, pack: string): CompiledRule[] {
